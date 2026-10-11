@@ -127,16 +127,6 @@ EveryReader finds the files on your phone, whatever their type, and opens them i
 | `.wk1` to `.wk4`, `.1-2-3`, `.sylk`, `.dif` | Not planned for now | Legacy spreadsheet formats |
 | `.mpp`, `.vsd`, `.vsdx`, `.dwg`, `.dxf` | Not planned for now | Project, diagram and CAD formats |
 
-### Editing Roadmap
-
-These formats are view-only today. Editing them is planned in roughly this order:
-
-1. `.odt` and `.ott` (paragraph editing, using the Word editor)
-2. `.ods` and `.fods` (cell editing)
-3. `.xlsm` (cell editing that keeps macros)
-4. `.epub` (chapter text editing)
-5. Text-only editing for PowerPoint files
-
 ## Setup
 
 1. Download the latest APK from [Releases](../../releases)
