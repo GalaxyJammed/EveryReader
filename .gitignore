@@ -13,3 +13,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+/app/release/app-release.apk
+/java_pid8796.hprof
+/app/release/mapping.txt
+/app/release/output-metadata.json
