@@ -3,6 +3,7 @@ package com.example.everyreader
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -14,7 +15,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun SettingsScreen(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(
+    darkMode: Boolean,
+    onDarkModeChange: (Boolean) -> Unit,
+    combinePaths: Boolean,
+    onCombineChange: (Boolean) -> Unit,
+    onBack: () -> Unit
+) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
             modifier = Modifier
@@ -36,26 +43,37 @@ fun SettingsScreen(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit, onBac
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = "Back"
                         )
                     }
                     Text(
                         text = "Settings",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
             SectionTitle("Appearance")
             ShieldCard {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     SettingRow(
                         icon = Icons.Default.Settings,
                         title = "Dark Mode",
                         subtitle = if (darkMode) "On" else "Off",
                         checked = darkMode,
                         onCheckedChange = onDarkModeChange
+                    )
+                    SettingRow(
+                        icon = Icons.Default.Folder,
+                        title = "Combine FilePaths",
+                        subtitle = if (combinePaths) "On" else "Off",
+                        checked = combinePaths,
+                        onCheckedChange = onCombineChange
                     )
                 }
             }
@@ -75,12 +93,17 @@ fun SettingRow(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(imageVector = icon, contentDescription = null)
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface
+        )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = subtitle,

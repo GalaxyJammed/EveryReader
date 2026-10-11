@@ -24,8 +24,11 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -54,7 +57,6 @@ import java.nio.file.Files
 import java.nio.file.attribute.BasicFileAttributes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.foundation.lazy.rememberLazyListState
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,6 +144,44 @@ val sortGroups: List<Pair<String, List<SortOrder>>> = listOf(
     "Content Size" to listOf(SortOrder.SIZE_BIG, SortOrder.SIZE_SMALL)
 )
 
+sealed interface BrowseEntry
+
+data class FolderEntry(val name: String, val path: String, val count: Int) : BrowseEntry
+
+data class FileEntry(val file: File) : BrowseEntry
+
+fun BrowseEntry.key(): String = when (this) {
+    is FolderEntry -> "folder:$path"
+    is FileEntry -> file.absolutePath
+}
+
+fun storageRoot(): String = Environment.getExternalStorageDirectory().absolutePath
+
+fun relativeOf(file: File): String =
+    file.absolutePath.removePrefix(storageRoot()).trimStart('/')
+
+fun browseEntries(files: List<File>, folder: String): List<BrowseEntry> {
+    val prefix = if (folder.isEmpty()) "" else "$folder/"
+    val folderCounts = LinkedHashMap<String, Int>()
+    val direct = ArrayList<BrowseEntry>()
+    for (f in files) {
+        val rel = relativeOf(f)
+        if (!rel.startsWith(prefix)) continue
+        val rest = rel.removePrefix(prefix)
+        val slash = rest.indexOf('/')
+        if (slash < 0) {
+            direct.add(FileEntry(f))
+        } else {
+            val name = rest.substring(0, slash)
+            folderCounts[name] = (folderCounts[name] ?: 0) + 1
+        }
+    }
+    val folders = folderCounts.entries
+        .sortedBy { it.key.lowercase() }
+        .map { FolderEntry(it.key, prefix + it.key, it.value) }
+    return folders + direct
+}
+
 fun createdMillis(file: File): Long =
     runCatching {
         Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
@@ -181,6 +221,8 @@ fun EveryReaderHome(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
     var settingsOpen by remember { mutableStateOf(false) }
     var category by rememberSaveable { mutableStateOf(FileType.PDF) }
     var sortOrder by rememberSaveable { mutableStateOf(SortOrder.UPDATED_NEW) }
+    var combinePaths by rememberSaveable { mutableStateOf(false) }
+    var folderPath by rememberSaveable { mutableStateOf("") }
 
     BackHandler(enabled = openFile != null || settingsOpen) {
         if (openFile != null) openFile = null else settingsOpen = false
@@ -192,13 +234,24 @@ fun EveryReaderHome(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
         settingsOpen -> SettingsScreen(
             darkMode = darkMode,
             onDarkModeChange = onDarkModeChange,
+            combinePaths = combinePaths,
+            onCombineChange = {
+                combinePaths = it
+                folderPath = ""
+            },
             onBack = { settingsOpen = false }
         )
         else -> FileListScreen(
             selected = category,
-            onSelect = { category = it },
+            onSelect = {
+                category = it
+                folderPath = ""
+            },
             sortOrder = sortOrder,
             onSortChange = { sortOrder = it },
+            combinePaths = combinePaths,
+            folderPath = folderPath,
+            onFolderChange = { folderPath = it },
             onOpenSettings = { settingsOpen = true },
             onOpen = { openFile = it }
         )
@@ -258,6 +311,9 @@ fun FileListScreen(
     onSelect: (FileType) -> Unit,
     sortOrder: SortOrder,
     onSortChange: (SortOrder) -> Unit,
+    combinePaths: Boolean,
+    folderPath: String,
+    onFolderChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpen: (File) -> Unit
 ) {
@@ -275,15 +331,19 @@ fun FileListScreen(
     var refresh by remember { mutableStateOf(0) }
 
     val sortedFiles = remember(files, sortOrder) { files.sortedWith(sortOrder.comparator) }
-    val listState = rememberLazyListState()
-    LaunchedEffect(sortOrder, selected) {
-        listState.scrollToItem(0)
+    val entries: List<BrowseEntry> = remember(sortedFiles, folderPath, combinePaths) {
+        if (combinePaths) browseEntries(sortedFiles, folderPath) else sortedFiles.map { FileEntry(it) }
     }
+    val listState = rememberLazyListState()
+    LaunchedEffect(sortOrder, selected, folderPath) { listState.scrollToItem(0) }
 
     val selecting = chosen.isNotEmpty()
     val exitSelection: () -> Unit = { chosen = emptySet() }
 
     BackHandler(enabled = selecting) { exitSelection() }
+    BackHandler(enabled = combinePaths && folderPath.isNotEmpty() && !selecting) {
+        onFolderChange(folderPath.substringBeforeLast('/', ""))
+    }
 
     val settingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -326,6 +386,14 @@ fun FileListScreen(
     val targetBackground = selected.accent?.let { lerp(baseBackground, it, if (isDark) 0.35f else 0.12f) } ?: baseBackground
     val background by animateColorAsState(targetValue = targetBackground, label = "background")
     val pillOutline = if (isDark) Color(0x33FFFFFF) else Color(0x33000000)
+
+    val parentPath = folderPath.substringBeforeLast('/', "")
+    val upName = if (parentPath.isEmpty()) "Internal Storage" else parentPath.substringAfterLast('/')
+    val sectionText = if (combinePaths && folderPath.isNotEmpty()) {
+        "Internal Storage > " + folderPath.split('/').joinToString(" > ")
+    } else {
+        "Scanned ${selected.label} files"
+    }
 
     Scaffold(containerColor = background) { padding ->
         Column(
@@ -443,7 +511,7 @@ fun FileListScreen(
                 }
             }
 
-            SectionTitle("Scanned ${selected.label} files")
+            SectionTitle(sectionText)
 
             Box(
                 modifier = Modifier
@@ -464,7 +532,7 @@ fun FileListScreen(
                             Text("Grant access")
                         }
                     }
-                    sortedFiles.isEmpty() -> Text(
+                    entries.isEmpty() -> Text(
                         text = "No ${selected.label} files found",
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.align(Alignment.Center)
@@ -476,81 +544,132 @@ fun FileListScreen(
                             .padding(end = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(sortedFiles, key = { it.absolutePath }) { file ->
-                            val isChosen = file.absolutePath in chosen
-                            ShieldCard(
-                                onClick = {
-                                    if (selecting) {
-                                        chosen = if (isChosen) chosen - file.absolutePath
-                                        else chosen + file.absolutePath
-                                    } else {
-                                        onOpen(file)
-                                    }
-                                },
-                                onLongClick = {
-                                    if (!selecting) chosen = chosen + file.absolutePath
-                                }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(
-                                        start = 16.dp,
-                                        top = 16.dp,
-                                        bottom = 16.dp,
-                                        end = 4.dp
-                                    ),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (selecting) {
+                        if (combinePaths && folderPath.isNotEmpty()) {
+                            item(key = "up") {
+                                ShieldCard(onClick = { onFolderChange(parentPath) }) {
+                                    Row(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Icon(
-                                            imageVector = if (isChosen) Icons.Default.CheckCircle
-                                            else Icons.Default.RadioButtonUnchecked,
-                                            contentDescription = if (isChosen) "Selected" else "Not selected",
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Back",
                                             modifier = Modifier.padding(end = 12.dp)
                                         )
-                                    }
-                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = file.name,
+                                            text = "Back to $upName",
                                             style = MaterialTheme.typography.bodyLarge
                                         )
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                                        )
-                                        Text(
-                                            text = pathLabel(file),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
+                                    }
+                                }
+                            }
+                        }
+                        items(entries, key = { it.key() }) { entry ->
+                            when (entry) {
+                                is FolderEntry -> ShieldCard(
+                                    onClick = { if (!selecting) onFolderChange(entry.path) }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = entry.name,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "${entry.count} ${selected.label} file" +
+                                                        if (entry.count == 1) "" else "s",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                            contentDescription = "Open folder"
                                         )
                                     }
-                                    if (!selecting) {
-                                        Box {
-                                            IconButton(onClick = { rowMenuFor = file.absolutePath }) {
+                                }
+                                is FileEntry -> {
+                                    val file = entry.file
+                                    val isChosen = file.absolutePath in chosen
+                                    ShieldCard(
+                                        onClick = {
+                                            if (selecting) {
+                                                chosen = if (isChosen) chosen - file.absolutePath
+                                                else chosen + file.absolutePath
+                                            } else {
+                                                onOpen(file)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (!selecting) chosen = chosen + file.absolutePath
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(
+                                                start = 16.dp,
+                                                top = 16.dp,
+                                                bottom = 16.dp,
+                                                end = 4.dp
+                                            ),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (selecting) {
                                                 Icon(
-                                                    imageVector = Icons.Default.MoreVert,
-                                                    contentDescription = "More"
+                                                    imageVector = if (isChosen) Icons.Default.CheckCircle
+                                                    else Icons.Default.RadioButtonUnchecked,
+                                                    contentDescription = if (isChosen) "Selected" else "Not selected",
+                                                    modifier = Modifier.padding(end = 12.dp)
                                                 )
                                             }
-                                            DropdownMenu(
-                                                expanded = rowMenuFor == file.absolutePath,
-                                                onDismissRequest = { rowMenuFor = null }
-                                            ) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Share") },
-                                                    onClick = {
-                                                        rowMenuFor = null
-                                                        shareFiles(context, listOf(file))
-                                                    }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = file.name,
+                                                    style = MaterialTheme.typography.bodyLarge
                                                 )
-                                                DropdownMenuItem(
-                                                    text = { Text("Delete") },
-                                                    onClick = {
-                                                        rowMenuFor = null
-                                                        singleDelete = file
-                                                    }
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(vertical = 8.dp),
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                                                 )
+                                                Text(
+                                                    text = pathLabel(file),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            if (!selecting) {
+                                                Box {
+                                                    IconButton(onClick = { rowMenuFor = file.absolutePath }) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.MoreVert,
+                                                            contentDescription = "More"
+                                                        )
+                                                    }
+                                                    DropdownMenu(
+                                                        expanded = rowMenuFor == file.absolutePath,
+                                                        onDismissRequest = { rowMenuFor = null }
+                                                    ) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Share") },
+                                                            onClick = {
+                                                                rowMenuFor = null
+                                                                shareFiles(context, listOf(file))
+                                                            }
+                                                        )
+                                                        DropdownMenuItem(
+                                                            text = { Text("Delete") },
+                                                            onClick = {
+                                                                rowMenuFor = null
+                                                                singleDelete = file
+                                                            }
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -559,7 +678,7 @@ fun FileListScreen(
                         }
                     }
                 }
-                if (hasAccess && sortedFiles.isNotEmpty()) {
+                if (hasAccess && entries.isNotEmpty()) {
                     ScrollIndicator { listState.scrollMetrics() }
                 }
             }
@@ -635,7 +754,9 @@ fun SectionTitle(title: String) {
         Text(
             text = title,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         HorizontalDivider()
     }
