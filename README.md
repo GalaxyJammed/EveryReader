@@ -43,6 +43,7 @@ EveryReader finds the files on your phone, whatever their type, and opens them i
 - **Text files** load in pages of about 100 words, so very large files stay fast
 - Large files open without freezing, including files of 20 MB or more
 - Scrollbars show where you are and how far you can scroll
+- **Combine file paths** to simulate a proper file manager with only the supported files showing in each folder
 
 ### ✏️ Editing
 - **PDF:** draw in four colours with adjustable width, erase parts of a mark, add text, add signatures, select, move, resize and rotate marks, then undo and redo. Save as a copy or overwrite the original
