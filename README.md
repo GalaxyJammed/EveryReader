@@ -62,6 +62,7 @@ EveryReader finds the files on your phone, whatever their type, and opens them i
 | Format | Description | Mode |
 |---|---|---|
 | `.pdf` | Portable Document Format | ✅ View and edit |
+| `.xps`, `.oxps` | XML Paper Specification | 👁️ View only |
 
 ### 📝 Text
 
@@ -82,6 +83,7 @@ EveryReader finds the files on your phone, whatever their type, and opens them i
 | `.xlsm` | Excel macro-enabled | 👁️ View only |
 | `.xltx`, `.xltm` | Excel templates | 👁️ View only |
 | `.ods`, `.fods` | OpenDocument Spreadsheet | 👁️ View only |
+| `.dbf` | dBase tables, read-only | 👁️ View only |
 
 ### 📽️ PowerPoint (Presentations)
 
@@ -120,8 +122,6 @@ EveryReader finds the files on your phone, whatever their type, and opens them i
 |---|---|---|
 | `.doc` | 🚧 Planned | Needs a binary Word reader |
 | `.ppt` | 🚧 Planned | Needs a binary PowerPoint reader |
-| `.dbf` | 🚧 Planned | dBase tables, read-only |
-| `.xps`, `.oxps` | 🚧 Planned | XML Paper Specification |
 | `.mobi`, `.azw`, `.azw3`, `.pdb` | 🚧 Planned | Kindle and Palm eBooks |
 | `.djvu`, `.ofd`, `.chm` | Under consideration | Need a rendering library |
 | `.wps`, `.hwp`, `.pages`, `.wri`, `.key` | Not planned for now | Proprietary formats |
