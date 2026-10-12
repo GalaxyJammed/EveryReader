@@ -44,6 +44,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Translate
 
 data class PageMatch(val page: Int, val range: IntRange)
 
@@ -212,7 +214,8 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val ext = file.extension.lowercase()
     val isPdf = ext == "pdf"
-    val isSheet = ext in listOf("xlsx", "xls", "xlsm", "xltx", "xltm", "ods", "fods", "csv", "tsv", "psv", "ssv")
+    val isSheet = ext in listOf("xlsx", "xls", "xlsm", "xltx", "xltm", "ods", "fods", "csv", "tsv", "psv", "ssv", "dbf")
+    val isXps = ext in listOf("xps", "oxps")
     val canEditSheet = ext in listOf("xlsx", "xls", "csv", "tsv", "psv", "ssv")
     val isDoc = ext in listOf("docx", "docm", "dotx", "dotm", "odt", "ott", "rtf", "mht", "mhtml", "epub", "fb2")
     val isDocx = ext in listOf("docx", "docm", "dotx", "dotm")
@@ -295,9 +298,10 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
                 runCatching { readDocument(file) }.getOrElse { emptyList() }
             }
             docLoaded = true
-        } else if (isPptx) {
+        } else if (isPptx || isXps) {
             slides = withContext(Dispatchers.IO) {
-                runCatching { readSlides(file) }.getOrElse { emptyList() }
+                runCatching { if (isXps) readXps(file) else readSlides(file) }
+                    .getOrElse { emptyList() }
             }
         } else if (ext == "txt") {
             chunks = withContext(Dispatchers.IO) {
@@ -677,7 +681,7 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
                             }
                         }
                     }
-                    isPptx -> {
+                    isPptx || isXps -> {
                         val deck = slides
                         if (deck == null) {
                             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -893,7 +897,6 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
             }
         )
     }
-
     if (showSaveChoice) {
         SaveChoiceDialog(
             onCopy = {

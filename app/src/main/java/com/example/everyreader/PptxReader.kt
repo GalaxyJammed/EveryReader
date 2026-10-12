@@ -58,6 +58,21 @@ import kotlin.math.sin
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
 
 private const val DEBUG_BOXES = false
 private const val MIN_FIT = 0.6f
@@ -760,14 +775,35 @@ private fun Element.byTag(tag: String): List<Element> {
 fun SlideView(slides: List<SlideData>) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val zs = remember { SlideZoom() }
     val current = listState.firstVisibleItemIndex.coerceIn(0, slides.lastIndex)
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds()
+                .onSizeChanged {
+                    zs.viewW = it.width.toFloat()
+                    zs.viewH = it.height.toFloat()
+                }
+                .slideZoomGesture(zs, listState)
+                .slidePanGesture(zs, listState)
+        ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().padding(end = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(end = 12.dp)
+                    .graphicsLayer {
+                        scaleX = zs.zoom
+                        scaleY = zs.zoom
+                        translationX = zs.panX
+                        translationY = zs.panY
+                    },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                userScrollEnabled = zs.zoom <= 1.001f
             ) {
                 itemsIndexed(slides) { _, slide -> SlideCard(slide) }
             }
@@ -1137,3 +1173,78 @@ private fun paragraphsHeightPx(
         )
     ).size.height
 }
+
+private class SlideZoom {
+    var zoom by mutableFloatStateOf(1f)
+    var panX by mutableFloatStateOf(0f)
+    var panY by mutableFloatStateOf(0f)
+    var viewW by mutableFloatStateOf(0f)
+    var viewH by mutableFloatStateOf(0f)
+}
+
+private fun slideClamp(pan: Float, zoom: Float, width: Float): Float {
+    val max = width * (zoom - 1f) / 2f
+    return pan.coerceIn(-max, max)
+}
+
+private fun slideClampY(pan: Float, zs: SlideZoom, listState: LazyListState): Float {
+    val info = listState.layoutInfo
+    val visible = info.visibleItemsInfo
+    if (visible.isEmpty()) return pan
+    val c = zs.viewH / 2f
+    val item = visible.firstOrNull { it.offset <= c && c <= it.offset + it.size }
+        ?: visible.minByOrNull { abs(it.offset + it.size / 2f - c) }
+        ?: return pan
+    val z = zs.zoom
+    val top = item.offset.toFloat()
+    val bottom = (item.offset + item.size).toFloat()
+    val lo = zs.viewH - c - z * (bottom - c)
+    val hi = -c - z * (top - c)
+    return if (lo <= hi) pan.coerceIn(lo, hi) else (lo + hi) / 2f
+}
+
+private fun slideMove(zs: SlideZoom, dx: Float, dy: Float, listState: LazyListState) {
+    zs.panX = slideClamp(zs.panX + dx, zs.zoom, zs.viewW)
+    zs.panY = slideClampY(zs.panY + dy, zs, listState)
+}
+
+private fun Modifier.slideZoomGesture(zs: SlideZoom, listState: LazyListState): Modifier =
+    pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.changes.count { it.pressed } >= 2) {
+                    val nz = (zs.zoom * event.calculateZoom()).coerceIn(1f, 5f)
+                    zs.zoom = nz
+                    if (nz <= 1.001f) {
+                        zs.panX = 0f
+                        zs.panY = 0f
+                    } else {
+                        val pan = event.calculatePan()
+                        slideMove(zs, pan.x, pan.y, listState)
+                    }
+                    event.changes.forEach { it.consume() }
+                }
+            } while (event.changes.any { it.pressed })
+        }
+    }
+
+private fun Modifier.slidePanGesture(zs: SlideZoom, listState: LazyListState): Modifier =
+    pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var last = down.position
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed || event.changes.count { it.pressed } > 1) break
+                if (zs.zoom > 1.001f) {
+                    val d = change.position - last
+                    slideMove(zs, d.x, d.y, listState)
+                    change.consume()
+                }
+                last = change.position
+            }
+        }
+    }

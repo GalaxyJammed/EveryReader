@@ -27,16 +27,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,6 +49,7 @@ import java.nio.file.Files
 import java.nio.file.attribute.BasicFileAttributes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.text.style.TextAlign
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,16 +74,22 @@ enum class FileType(
     val accent: Color?
 ) {
     TEXT("Text", listOf("txt"), arrayOf("text/plain"), null),
-    PDF("PDF", listOf("pdf"), arrayOf("application/pdf"), Color(0xFFD32F2F)),
+    PDF(
+        "PDF",
+        listOf("pdf", "xps", "oxps"),
+        arrayOf("application/pdf", "application/oxps", "application/vnd.ms-xpsdocument"),
+        Color(0xFFD32F2F)
+    ),
     EXCEL(
         "Excel",
-        listOf("xls", "xlsx", "xlsm", "xltx", "xltm", "ods", "fods", "csv", "tsv", "psv", "ssv"),
+        listOf("xls", "xlsx", "xlsm", "xltx", "xltm", "ods", "fods", "csv", "tsv", "psv", "ssv", "dbf"),
         arrayOf(
             "application/vnd.ms-excel",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.oasis.opendocument.spreadsheet",
             "text/csv",
-            "text/tab-separated-values"
+            "text/tab-separated-values",
+            "application/x-dbf"
         ),
         Color(0xFF2E7D32)
     ),
@@ -150,9 +149,12 @@ data class FolderEntry(val name: String, val path: String, val count: Int) : Bro
 
 data class FileEntry(val file: File) : BrowseEntry
 
+data class ExtensionHeader(val ext: String, val count: Int) : BrowseEntry
+
 fun BrowseEntry.key(): String = when (this) {
     is FolderEntry -> "folder:$path"
     is FileEntry -> file.absolutePath
+    is ExtensionHeader -> "ext:$ext"
 }
 
 fun storageRoot(): String = Environment.getExternalStorageDirectory().absolutePath
@@ -180,6 +182,18 @@ fun browseEntries(files: List<File>, folder: String): List<BrowseEntry> {
         .sortedBy { it.key.lowercase() }
         .map { FolderEntry(it.key, prefix + it.key, it.value) }
     return folders + direct
+}
+
+fun groupByExtension(entries: List<BrowseEntry>): List<BrowseEntry> {
+    val folders = entries.filterIsInstance<FolderEntry>()
+    val groups = LinkedHashMap<String, MutableList<FileEntry>>()
+    entries.filterIsInstance<FileEntry>().forEach { entry ->
+        groups.getOrPut(entry.file.extension.lowercase()) { mutableListOf() }.add(entry)
+    }
+    val grouped = groups.flatMap { (ext, list) ->
+        listOf<BrowseEntry>(ExtensionHeader(ext, list.size)) + list
+    }
+    return folders + grouped
 }
 
 fun createdMillis(file: File): Long =
@@ -222,6 +236,7 @@ fun EveryReaderHome(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
     var category by rememberSaveable { mutableStateOf(FileType.PDF) }
     var sortOrder by rememberSaveable { mutableStateOf(SortOrder.UPDATED_NEW) }
     var combinePaths by rememberSaveable { mutableStateOf(false) }
+    var separateByExt by rememberSaveable { mutableStateOf(false) }
     var folderPath by rememberSaveable { mutableStateOf("") }
 
     BackHandler(enabled = openFile != null || settingsOpen) {
@@ -239,6 +254,8 @@ fun EveryReaderHome(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
                 combinePaths = it
                 folderPath = ""
             },
+            separateByExt = separateByExt,
+            onSeparateChange = { separateByExt = it },
             onBack = { settingsOpen = false }
         )
         else -> FileListScreen(
@@ -250,6 +267,7 @@ fun EveryReaderHome(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
             sortOrder = sortOrder,
             onSortChange = { sortOrder = it },
             combinePaths = combinePaths,
+            separateByExt = separateByExt,
             folderPath = folderPath,
             onFolderChange = { folderPath = it },
             onOpenSettings = { settingsOpen = true },
@@ -312,6 +330,7 @@ fun FileListScreen(
     sortOrder: SortOrder,
     onSortChange: (SortOrder) -> Unit,
     combinePaths: Boolean,
+    separateByExt: Boolean,
     folderPath: String,
     onFolderChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
@@ -331,8 +350,9 @@ fun FileListScreen(
     var refresh by remember { mutableStateOf(0) }
 
     val sortedFiles = remember(files, sortOrder) { files.sortedWith(sortOrder.comparator) }
-    val entries: List<BrowseEntry> = remember(sortedFiles, folderPath, combinePaths) {
-        if (combinePaths) browseEntries(sortedFiles, folderPath) else sortedFiles.map { FileEntry(it) }
+    val entries: List<BrowseEntry> = remember(sortedFiles, folderPath, combinePaths, separateByExt) {
+        val base = if (combinePaths) browseEntries(sortedFiles, folderPath) else sortedFiles.map { FileEntry(it) }
+        if (separateByExt) groupByExtension(base) else base
     }
     val listState = rememberLazyListState()
     LaunchedEffect(sortOrder, selected, folderPath) { listState.scrollToItem(0) }
@@ -392,7 +412,7 @@ fun FileListScreen(
     val sectionText = if (combinePaths && folderPath.isNotEmpty()) {
         "Internal Storage > " + folderPath.split('/').joinToString(" > ")
     } else {
-        "Scanned ${selected.label} files"
+        "Scanned Files ${files.size}"
     }
 
     Scaffold(containerColor = background) { padding ->
@@ -566,6 +586,36 @@ fun FileListScreen(
                         }
                         items(entries, key = { it.key() }) { entry ->
                             when (entry) {
+                                is ExtensionHeader -> Column(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                                .padding(horizontal = 14.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = ".${entry.ext}",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                        Text(
+                                            text = "${entry.count} file" + if (entry.count == 1) "" else "s",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                                }
                                 is FolderEntry -> ShieldCard(
                                     onClick = { if (!selecting) onFolderChange(entry.path) }
                                 ) {
@@ -750,15 +800,25 @@ fun FileListScreen(
 
 @Composable
 fun SectionTitle(title: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        HorizontalDivider()
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(horizontal = 14.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

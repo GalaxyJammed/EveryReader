@@ -30,6 +30,8 @@ import java.io.InputStream
 import java.util.zip.ZipFile
 import kotlinx.coroutines.launch
 import org.xmlpull.v1.XmlPullParser
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.IntrinsicSize
 
 data class SheetData(val name: String, val rows: List<List<String>>)
 
@@ -217,8 +219,6 @@ fun SheetContent(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val cols = maxOf(current.rows.maxOfOrNull { it.size } ?: 0, 1) + EXTRA_COLS
-    val cellWidth = 110.dp
-    val cellPx = with(density) { cellWidth.toPx() }
     val rowHeight = 28.dp
     val rowNumWidth = 44.dp
     val chipScroll = rememberScrollState()
@@ -233,6 +233,12 @@ fun SheetContent(
 
     val originals = remember(current) {
         List(current.rows.size + EXTRA_ROWS) { r -> current.rows.getOrElse(r) { emptyList() } }
+    }
+    val cellWidths: List<Dp> = remember(originals, cols) {
+        List(cols) { c ->
+            val longest = originals.maxOfOrNull { row -> row.getOrElse(c) { "" }.length } ?: 0
+            (longest * 7f + 16f).coerceIn(80f, 280f).dp
+        }
     }
     val shown: List<List<String>> = remember(current, index, cols, editor.revision) {
         originals.mapIndexed { r, row ->
@@ -281,9 +287,10 @@ fun SheetContent(
             }
             matchIndex = next
             val pos = matches[next]
+            val x = with(density) { cellWidths.take(pos.col).fold(0.dp) { acc, w -> acc + w }.toPx() }
             scope.launch {
                 listState.animateScrollToItem(pos.row)
-                tableScroll.animateScrollTo(maxOf(0f, pos.col * cellPx - cellPx).toInt())
+                tableScroll.animateScrollTo(maxOf(0, x.toInt() - 60))
             }
         }
     }
@@ -322,7 +329,7 @@ fun SheetContent(
                 for (c in 0 until cols) {
                     Box(
                         modifier = Modifier
-                            .width(cellWidth)
+                            .width(cellWidths[c])
                             .fillMaxHeight()
                             .background(headerBg)
                             .border(0.5.dp, gridColor),
@@ -343,7 +350,12 @@ fun SheetContent(
             modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
             itemsIndexed(shown) { r, row ->
-                Row(modifier = Modifier.fillMaxWidth().height(rowHeight)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .defaultMinSize(minHeight = rowHeight)
+                ) {
                     Box(
                         modifier = Modifier
                             .width(rowNumWidth)
@@ -377,7 +389,7 @@ fun SheetContent(
                             }
                             Box(
                                 modifier = Modifier
-                                    .width(cellWidth)
+                                    .width(cellWidths[c])
                                     .fillMaxHeight()
                                     .background(bg)
                                     .border(0.5.dp, gridColor)
@@ -385,14 +397,12 @@ fun SheetContent(
                                         editCell = pos
                                         editValue = text
                                     }
-                                    .padding(horizontal = 6.dp),
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 Text(
                                     text = text,
                                     style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                     color = if (highlighted) Color.Black else Color.Unspecified
                                 )
                             }
@@ -437,7 +447,8 @@ fun SheetContent(
                 OutlinedTextField(
                     value = editValue,
                     onValueChange = { editValue = it },
-                    singleLine = true
+                    minLines = 1,
+                    maxLines = 6
                 )
             },
             confirmButton = {

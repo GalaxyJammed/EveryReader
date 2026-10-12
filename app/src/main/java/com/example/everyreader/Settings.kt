@@ -2,9 +2,8 @@ package com.example.everyreader
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,6 +19,8 @@ fun SettingsScreen(
     onDarkModeChange: (Boolean) -> Unit,
     combinePaths: Boolean,
     onCombineChange: (Boolean) -> Unit,
+    separateByExt: Boolean,
+    onSeparateChange: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
@@ -74,6 +75,13 @@ fun SettingsScreen(
                         subtitle = if (combinePaths) "On" else "Off",
                         checked = combinePaths,
                         onCheckedChange = onCombineChange
+                    )
+                    SettingRow(
+                        icon = Icons.AutoMirrored.Filled.List,
+                        title = "Separate by extension",
+                        subtitle = if (separateByExt) "On" else "Off",
+                        checked = separateByExt,
+                        onCheckedChange = onSeparateChange
                     )
                 }
             }

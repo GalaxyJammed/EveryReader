@@ -22,6 +22,7 @@ fun sheetKind(file: File): SheetKind {
 fun readSheets(file: File): List<SheetData> {
     val ext = file.extension.lowercase()
     if (ext == "ods" || ext == "fods") return readOds(file)
+    if (ext == "dbf") return readDbf(file)
     return when (sheetKind(file)) {
         SheetKind.OLE -> readXls(file)
         SheetKind.ZIP -> readXlsx(file)
