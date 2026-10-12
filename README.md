@@ -62,7 +62,7 @@ EveryReader finds the files on your phone, whatever their type, and opens them i
 | Format | Description | Mode |
 |---|---|---|
 | `.pdf` | Portable Document Format | ✅ View and edit |
-| `.xps`, `.oxps` | 👁️ View only | XML Paper Specification |
+| `.xps`, `.oxps` | XML Paper Specification | 👁️ View only |
 
 ### 📝 Text
 
@@ -83,7 +83,7 @@ EveryReader finds the files on your phone, whatever their type, and opens them i
 | `.xlsm` | Excel macro-enabled | 👁️ View only |
 | `.xltx`, `.xltm` | Excel templates | 👁️ View only |
 | `.ods`, `.fods` | OpenDocument Spreadsheet | 👁️ View only |
-| `.dbf` | 👁️ View only | dBase tables, read-only |
+| `.dbf` | dBase tables, read-only | 👁️ View only |
 
 ### 📽️ PowerPoint (Presentations)
 
