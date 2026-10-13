@@ -72,4 +72,8 @@ class SheetEditor {
 }
 
 fun writeSheetCells(file: File, cells: List<Pair<SheetCell, String>>): Boolean =
-    cells.all { (cell, value) -> writeSheetCell(file, cell.sheet, cell.row, cell.col, value) }
+    if (file.extension.lowercase() in listOf("ods", "fods")) {
+        writeOdsCells(file, cells)
+    } else {
+        cells.all { (cell, value) -> writeSheetCell(file, cell.sheet, cell.row, cell.col, value) }
+    }

@@ -44,8 +44,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.filled.Translate
 
 data class PageMatch(val page: Int, val range: IntRange)
 
@@ -215,12 +213,13 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
     val ext = file.extension.lowercase()
     val isPdf = ext == "pdf"
     val isSheet = ext in listOf("xlsx", "xls", "xlsm", "xltx", "xltm", "ods", "fods", "csv", "tsv", "psv", "ssv", "dbf")
-    val isXps = ext in listOf("xps", "oxps")
-    val canEditSheet = ext in listOf("xlsx", "xls", "csv", "tsv", "psv", "ssv")
+    val canEditSheet = ext in listOf("xlsx", "xls", "csv", "tsv", "psv", "ssv", "ods", "fods")
     val isDoc = ext in listOf("docx", "docm", "dotx", "dotm", "odt", "ott", "rtf", "mht", "mhtml", "epub", "fb2")
     val isDocx = ext in listOf("docx", "docm", "dotx", "dotm")
+    val isOdt = ext in listOf("odt", "ott")
     val isFb2 = ext == "fb2"
     val isPptx = ext in listOf("pptx", "pptm", "potx", "potm", "ppsx", "ppsm", "odp", "otp")
+    val isXps = ext in listOf("xps", "oxps")
 
     var chunks by remember(file) { mutableStateOf<List<String>?>(null) }
     var pageIndex by remember(file) { mutableStateOf(0) }
@@ -249,6 +248,8 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
     var docSession by remember(file) { mutableStateOf<DocxSession?>(null) }
     var fb2Session by remember(file) { mutableStateOf<Fb2Session?>(null) }
     var fb2Editing by remember(file) { mutableStateOf(false) }
+    var odtSession by remember(file) { mutableStateOf<OdtSession?>(null) }
+    var odtEditing by remember(file) { mutableStateOf(false) }
     val docEdit = remember(file) { DocEditState() }
     var docEditing by remember(file) { mutableStateOf(false) }
     var docTextTarget by remember(file) { mutableStateOf<DocPara?>(null) }
@@ -264,13 +265,15 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
     val docShown: List<DocSection>? = when {
         isDocx -> docSession?.sections
         isFb2 -> fb2Session?.sections
+        isOdt -> odtSession?.sections
         else -> docs
     }
     val docDirty = isDocx && docSession?.dirty == true
     val fb2Dirty = isFb2 && fb2Session?.dirty == true
+    val odtDirty = isOdt && odtSession?.dirty == true
     val textDirty = editing && list != null &&
             (pending.isNotEmpty() || editField.text != list[pageIndex])
-    val hasUnsaved = (isPdf && pdfEdit.marks.isNotEmpty()) || docDirty || fb2Dirty
+    val hasUnsaved = (isPdf && pdfEdit.marks.isNotEmpty()) || docDirty || fb2Dirty || odtDirty
 
     LaunchedEffect(file, sheetVersion) {
         if (isSheet) {
@@ -291,6 +294,11 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
         } else if (isFb2) {
             if (fb2Session == null) {
                 fb2Session = withContext(Dispatchers.IO) { Fb2Session.open(file) }
+            }
+            docLoaded = true
+        } else if (isOdt) {
+            if (odtSession == null) {
+                odtSession = withContext(Dispatchers.IO) { OdtSession.open(file) }
             }
             docLoaded = true
         } else if (isDoc) {
@@ -355,6 +363,7 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
             sheetEditing -> if (sheetEditor.dirty) showUnsaved = true else sheetEditing = false
             docEditing -> docEditing = false
             fb2Editing -> fb2Editing = false
+            odtEditing -> odtEditing = false
             editing -> if (textDirty) showUnsaved = true else cancelTextEdit()
             hasUnsaved -> showUnsaved = true
             else -> onBack()
@@ -514,6 +523,22 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
         }
     }
 
+    val saveOdt: (Boolean) -> Unit = { overwrite ->
+        showSaveChoice = false
+        val session = odtSession
+        if (session != null) {
+            scope.launch {
+                val out = withContext(Dispatchers.IO) { session.save(overwrite) }
+                if (out != null) {
+                    MediaScannerConnection.scanFile(context, arrayOf(out.absolutePath), null, null)
+                    Toast.makeText(context, "Saved ${out.name}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Could not save", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     val saveSheet: () -> Unit = {
         if (!sheetEditor.dirty) {
             sheetEditing = false
@@ -643,6 +668,13 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
                                         contentDescription = if (fb2Editing) "Done editing" else "Edit"
                                     )
                                 }
+                            isOdt && odtSession != null ->
+                                IconButton(onClick = { odtEditing = !odtEditing }) {
+                                    Icon(
+                                        imageVector = if (odtEditing) Icons.Default.Check else Icons.Default.Edit,
+                                        contentDescription = if (odtEditing) "Done editing" else "Edit"
+                                    )
+                                }
                             list != null -> IconButton(
                                 onClick = { if (editing) saveText() else startTextEdit(list) }
                             ) {
@@ -674,11 +706,9 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
                                 text = "Could not open this document.",
                                 modifier = Modifier.align(Alignment.Center)
                             )
-                            else -> if (isFb2) {
-                                DocView(d, docEdit, fb2Editing, onFb2ParaTap, onImageTap, onImageCommit)
-                            } else {
-                                DocView(d, docEdit, docEditing, onParaTap, onImageTap, onImageCommit)
-                            }
+                            isFb2 -> DocView(d, docEdit, fb2Editing, onFb2ParaTap, onImageTap, onImageCommit)
+                            isOdt -> DocView(d, docEdit, odtEditing, onFb2ParaTap, onImageTap, onImageCommit)
+                            else -> DocView(d, docEdit, docEditing, onParaTap, onImageTap, onImageCommit)
                         }
                     }
                     isPptx || isXps -> {
@@ -766,6 +796,16 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
                             .padding(bottom = 4.dp)
                     ) {
                         Fb2EditToolbar(fb2, onSave = { showSaveChoice = true })
+                    }
+                }
+                val odt = odtSession
+                if (isOdt && odtEditing && odt != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 4.dp)
+                    ) {
+                        OdtEditToolbar(odt, onSave = { showSaveChoice = true })
                     }
                 }
             }
@@ -885,10 +925,10 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
                     val newText = docText
                     val idx = target.srcIndex
                     docTextTarget = null
-                    if (isFb2) {
-                        fb2Session?.setParagraphText(idx, newText)
-                    } else {
-                        docSession?.setParagraphText(idx, newText)
+                    when {
+                        isFb2 -> fb2Session?.setParagraphText(idx, newText)
+                        isOdt -> odtSession?.setParagraphText(idx, newText)
+                        else -> docSession?.setParagraphText(idx, newText)
                     }
                 }) { Text("Apply") }
             },
@@ -897,10 +937,12 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
             }
         )
     }
+
     if (showSaveChoice) {
         SaveChoiceDialog(
             onCopy = {
                 when {
+                    isOdt -> saveOdt(false)
                     isFb2 -> saveFb2(false)
                     isDocx -> saveDocx(false)
                     else -> savePdf(false)
@@ -908,6 +950,7 @@ fun ReaderScreen(file: File, onBack: () -> Unit) {
             },
             onOverwrite = {
                 when {
+                    isOdt -> saveOdt(true)
                     isFb2 -> saveFb2(true)
                     isDocx -> saveDocx(true)
                     else -> savePdf(true)

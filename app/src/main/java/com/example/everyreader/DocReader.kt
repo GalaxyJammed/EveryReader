@@ -498,27 +498,7 @@ private fun docxTable(tbl: Element): List<List<String>> =
         }
     }
 
-fun readOdt(file: File): List<DocSection> = ZipFile(file).use { zip ->
-    val content = xZipDom(zip, "content.xml") ?: return@use emptyList()
-    val stylesRoot = xZipDom(zip, "styles.xml")
-    val roots = listOfNotNull(stylesRoot, content)
-    val styles = odfTextStyles(roots)
-    val text = content.xAll("office:text").firstOrNull() ?: return@use emptyList()
-    val blocks = ArrayList<DocBlock>()
-    odfCollect(text, styles, blocks)
-    val pl = roots.flatMap { it.xAll("style:page-layout-properties") }.firstOrNull()
-    listOf(
-        DocSection(
-            blocks = blocks,
-            widthPt = odfLenPt(pl?.getAttribute("fo:page-width")) ?: 595f,
-            heightPt = odfLenPt(pl?.getAttribute("fo:page-height")) ?: 842f,
-            marginLeft = odfLenPt(pl?.getAttribute("fo:margin-left")) ?: 72f,
-            marginTop = odfLenPt(pl?.getAttribute("fo:margin-top")) ?: 72f,
-            marginRight = odfLenPt(pl?.getAttribute("fo:margin-right")) ?: 72f,
-            marginBottom = odfLenPt(pl?.getAttribute("fo:margin-bottom")) ?: 72f
-        )
-    )
-}
+fun readOdt(file: File): List<DocSection> = readOdtParts(partsOf(file))
 
 private fun odfLenPt(v: String?): Float? {
     val m = Regex("^(-?[\\d.]+)\\s*(cm|mm|in|pt|pc)$").find(v?.trim().orEmpty()) ?: return null

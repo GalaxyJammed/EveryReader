@@ -56,11 +56,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val systemDark = isSystemInDarkTheme()
-            var darkMode by rememberSaveable { mutableStateOf(systemDark) }
+            val context = LocalContext.current
+            var darkMode by rememberSaveable {
+                mutableStateOf(AppPrefs.darkMode(context, systemDark))
+            }
             EveryReaderTheme(darkTheme = darkMode) {
                 EveryReaderHome(
                     darkMode = darkMode,
-                    onDarkModeChange = { darkMode = it }
+                    onDarkModeChange = {
+                        darkMode = it
+                        AppPrefs.setDarkMode(context, it)
+                    }
                 )
             }
         }
@@ -231,12 +237,17 @@ fun pathLabel(file: File): String {
 
 @Composable
 fun EveryReaderHome(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
+    val context = LocalContext.current
     var openFile by remember { mutableStateOf<File?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
-    var category by rememberSaveable { mutableStateOf(FileType.PDF) }
-    var sortOrder by rememberSaveable { mutableStateOf(SortOrder.UPDATED_NEW) }
-    var combinePaths by rememberSaveable { mutableStateOf(false) }
-    var separateByExt by rememberSaveable { mutableStateOf(false) }
+    var category by rememberSaveable {
+        mutableStateOf(AppPrefs.category(context, FileType.PDF))
+    }
+    var sortOrder by rememberSaveable {
+        mutableStateOf(AppPrefs.sortOrder(context, SortOrder.UPDATED_NEW))
+    }
+    var combinePaths by rememberSaveable { mutableStateOf(AppPrefs.combinePaths(context)) }
+    var separateByExt by rememberSaveable { mutableStateOf(AppPrefs.separateByExt(context)) }
     var folderPath by rememberSaveable { mutableStateOf("") }
 
     BackHandler(enabled = openFile != null || settingsOpen) {
@@ -252,20 +263,28 @@ fun EveryReaderHome(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
             combinePaths = combinePaths,
             onCombineChange = {
                 combinePaths = it
+                AppPrefs.setCombinePaths(context, it)
                 folderPath = ""
             },
             separateByExt = separateByExt,
-            onSeparateChange = { separateByExt = it },
+            onSeparateChange = {
+                separateByExt = it
+                AppPrefs.setSeparateByExt(context, it)
+            },
             onBack = { settingsOpen = false }
         )
         else -> FileListScreen(
             selected = category,
             onSelect = {
                 category = it
+                AppPrefs.setCategory(context, it)
                 folderPath = ""
             },
             sortOrder = sortOrder,
-            onSortChange = { sortOrder = it },
+            onSortChange = {
+                sortOrder = it
+                AppPrefs.setSortOrder(context, it)
+            },
             combinePaths = combinePaths,
             separateByExt = separateByExt,
             folderPath = folderPath,
