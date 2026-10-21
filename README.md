@@ -9,7 +9,7 @@
 ![Min SDK](https://img.shields.io/badge/Min%20SDK-29-blue)
 ![GitHub release](https://img.shields.io/github/v/release/galaxyjammed/EveryReader?logo=github&label=GitHub%20release)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
-![Project Status](https://img.shields.io/badge/Project%20Status-In%20Progress-orange)
+![Project Status](https://img.shields.io/badge/Project%20Status-In%20Hiatus)
 
 ⭐ **If EveryReader helps you, please star this repository. It helps other users find the project.**
 
